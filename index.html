@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>제주 귤 뽑기</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 16px;
+      font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      background: linear-gradient(#bfe6ff 0%, #e8f7ff 60%, #d6f0c2 100%);
+      color: #3b2a14;
+    }
+    h1 { margin: 0; font-size: 1.6rem; }
+    .hint { margin: 0; font-size: .95rem; color: #5a6b7a; }
+    .count {
+      font-size: 1.1rem;
+      background: #fff;
+      border-radius: 999px;
+      padding: 6px 18px;
+      box-shadow: 0 2px 6px rgba(0,0,0,.12);
+    }
+    .count b { color: #f07a00; font-size: 1.4rem; }
+    #tree { width: min(86vw, 380px); height: auto; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+    #tree:active .crown { transform: scale(1.01); }
+    .tg { transition: transform .85s cubic-bezier(.5, 0, 1, .6); }
+    .crown { transform-origin: 200px 200px; transition: transform .1s; }
+    .shake { animation: shake .35s; }
+    @keyframes shake {
+      0%, 100% { transform: rotate(0); }
+      25% { transform: rotate(-1.6deg); }
+      75% { transform: rotate(1.6deg); }
+    }
+    .card {
+      width: min(86vw, 380px);
+      min-height: 120px;
+      background: #fffaf0;
+      border: 3px solid #f6a21e;
+      border-radius: 16px;
+      padding: 16px 20px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,.15);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity .4s, transform .4s;
+    }
+    .card.show { opacity: 1; transform: translateY(0); }
+    .card .jeju { font-size: 1.7rem; font-weight: bold; color: #e65f00; margin: 0 0 6px; }
+    .card .mean { margin: 0; font-size: 1.05rem; }
+    .card .no { margin: 0 0 6px; font-size: .85rem; color: #9a7b4f; }
+    button {
+      font: inherit;
+      border: 0;
+      background: #f07a00;
+      color: #fff;
+      padding: 8px 20px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    button:hover { background: #d96d00; }
+  </style>
+</head>
+<body>
+  <h1>🍊 제주 귤 뽑기</h1>
+  <p class="hint">귤나무를 눌러 보세요!</p>
+  <div class="count">뽑은 귤 <b id="count">0</b>개</div>
+
+  <svg id="tree" viewBox="0 0 400 420" role="button" aria-label="귤나무">
+    <!-- 땅 -->
+    <ellipse cx="200" cy="405" rx="190" ry="14" fill="#8ccf6a"/>
+    <!-- 줄기 -->
+    <path d="M182 400 C186 340 188 300 184 250 L216 250 C212 300 214 340 218 400 Z" fill="#8a5a2b"/>
+    <!-- 잎 -->
+    <g class="crown" id="crown">
+      <circle cx="200" cy="170" r="120" fill="#3f9a3c"/>
+      <circle cx="130" cy="205" r="72" fill="#4aa845"/>
+      <circle cx="272" cy="205" r="72" fill="#4aa845"/>
+      <circle cx="200" cy="105" r="70" fill="#56b84f"/>
+      <!-- 귤들 -->
+      <g id="fruits"></g>
+    </g>
+  </svg>
+
+  <div class="card" id="card" aria-live="polite">
+    <p class="no" id="no"></p>
+    <p class="jeju" id="jeju"></p>
+    <p class="mean" id="mean"></p>
+  </div>
+
+  <button id="reset" type="button">귤 다시 달기</button>
+
+  <script>
+    var BLESSINGS = [
+      { jeju: "혼저 옵서예", mean: "어서 오세요" },
+      { jeju: "폭삭 속았수다", mean: "정말 수고 많으셨습니다" },
+      { jeju: "고맙수다", mean: "고맙습니다" },
+      { jeju: "사랑햄수다", mean: "사랑합니다" },
+      { jeju: "복 하영 받읍서", mean: "복 많이 받으세요" },
+      { jeju: "펜안헙서", mean: "편안하세요" },
+      { jeju: "놀멍 쉬멍 갑서", mean: "놀면서 쉬면서 가세요" },
+      { jeju: "아프지 말앙 지냅서", mean: "아프지 말고 지내세요" },
+      { jeju: "잘 지냄수과?", mean: "잘 지내시나요?" },
+      { jeju: "맨도롱 또똣하게 살아 갑서", mean: "기분 좋게 따뜻하게 살아가세요" }
+    ];
+
+    // 귤 위치 (x, y)
+    var SPOTS = [
+      [140, 120], [210, 85], [265, 130], [110, 185], [180, 160],
+      [245, 195], [300, 215], [150, 235], [215, 240], [85, 230]
+    ];
+    var GROUND_Y = 392;
+
+    var fruits = document.getElementById("fruits");
+    var crown = document.getElementById("crown");
+    var card = document.getElementById("card");
+    var countEl = document.getElementById("count");
+    var NS = "http://www.w3.org/2000/svg";
+    var count = 0;
+    var items = [];
+
+    function makeFruit(x, y) {
+      var g = document.createElementNS(NS, "g");
+      g.setAttribute("class", "tg");
+      g.innerHTML =
+        '<circle cx="' + x + '" cy="' + y + '" r="19" fill="#ff9a1f"/>' +
+        '<circle cx="' + (x - 6) + '" cy="' + (y - 6) + '" r="5" fill="#ffc46b" opacity=".7"/>' +
+        '<path d="M' + x + ' ' + (y - 19) + ' q8 -10 16 -4 q-8 8 -16 4z" fill="#2f7d2c"/>';
+      fruits.appendChild(g);
+      return { el: g, x: x, y: y, fallen: false };
+    }
+
+    function build() {
+      fruits.innerHTML = "";
+      items = SPOTS.map(function (p) { return makeFruit(p[0], p[1]); });
+    }
+
+    function pick() {
+      var left = items.filter(function (f) { return !f.fallen; });
+      var fruit = left.length ? left[Math.floor(Math.random() * left.length)] : null;
+
+      crown.classList.remove("shake");
+      void crown.getBoundingClientRect();
+      crown.classList.add("shake");
+
+      if (!fruit) {
+        showCard("귤이 다 떨어졌어요", "'귤 다시 달기'를 눌러 보세요", "");
+        return;
+      }
+
+      fruit.fallen = true;
+      var dx = (Math.random() - 0.5) * 60;
+      fruit.el.style.transform = "translate(" + dx + "px," + (GROUND_Y - fruit.y) + "px)";
+
+      count++;
+      countEl.textContent = count;
+
+      var b = BLESSINGS[Math.floor(Math.random() * BLESSINGS.length)];
+      showCard(b.jeju, b.mean, "제주어 덕담 #" + count);
+    }
+
+    function showCard(jeju, mean, no) {
+      document.getElementById("no").textContent = no;
+      document.getElementById("jeju").textContent = jeju;
+      document.getElementById("mean").textContent = mean;
+      card.classList.remove("show");
+      void card.offsetWidth;
+      card.classList.add("show");
+    }
+
+    function reset() {
+      count = 0;
+      countEl.textContent = 0;
+      card.classList.remove("show");
+      build();
+    }
+
+    document.getElementById("tree").addEventListener("click", pick);
+    document.getElementById("reset").addEventListener("click", reset);
+    build();
+  </script>
+</body>
+</html>
